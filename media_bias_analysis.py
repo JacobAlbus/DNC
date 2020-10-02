@@ -20,6 +20,7 @@ candidate_sentiments_month = {"Joe_Biden": [[], []],
                               "Elizabeth_Warren": [[], []],
                               "Pete_Buttigieg": [[], []]}
 
+
 ##
 # Finds all google news headlines of a given candidate in a certain time frame
 # @param candidate expects a String formatted as 'query1+query2+...'
@@ -65,6 +66,19 @@ def find_candidate_headlines(candidate, year, start_month, end_month):
         df.to_csv(file_path, mode='a', index=False)
 
 
+# takes in a candidate's dataframe and removes articles that don't mention them by name
+def remove_irrelevant_articles(candidate, df):
+    temp = df
+    for index, row in temp.iterrows():
+        first_name = candidate.split("_")[0]
+        last_name = candidate.split("_")[0]
+        if (first_name not in row["title"] and last_name not in row["title"]) and (first_name not in row["media"] and last_name not in row["media"]):
+            temp = temp.drop(index)
+
+    temp = temp.reset_index()
+    return temp
+
+
 ##
 # calculates subjectivity and polarity using TextBlob
 def calculate_sentiment(candidate, year, start_month, end_month):
@@ -98,6 +112,47 @@ def calculate_sentiment(candidate, year, start_month, end_month):
     candidate_monthly_sentiments[candidate][2] = index
 
 
+# finds number of articles for each candidate that don't say them by name in both headline and tagline
+def find_num_articles_irrelevant():
+    num_articles_non_explicit = {"Joe_Biden": 0,
+                                 "Bernie_Sanders": 0,
+                                 "Elizabeth_Warren": 0,
+                                 "Pete_Buttigieg": 0}
+    for index_year in range(len(time_frames["years"])):
+        month_range = time_frames["month_ranges"][index_year]
+        start_month = month_range[0]
+        end_month = month_range[1]
+        year = time_frames["years"][index_year]
+        for candidate in candidates:
+            for i in range(end_month-start_month + 1):
+                current_month = start_month + i
+                file_path = candidate + "/candidate_headlines/" + candidate + "_" + str(year) + "_" + str(current_month) + ".csv"
+                df = pd.read_csv(file_path)
+                for index, row in df.iterrows():
+                    first_name = candidate.split("_")[0]
+                    last_name = candidate.split("_")[0]
+                    if(first_name not in row["title"] and last_name not in row["title"]) and (first_name not in row["media"] and last_name not in row["media"]):
+                        num_articles_non_explicit[candidate] += 1
+    print(num_articles_non_explicit)
+
+
+##
+# gets all the dates
+def calculate_dates():
+    temp_dates = []
+
+    for index_year in range(len(time_frames["years"])):
+        month_range = time_frames["month_ranges"][index_year]
+        start_month = month_range[0]
+        end_month = month_range[1]
+        year = time_frames["years"][index_year]
+        for i in range(end_month - start_month + 1):
+            current_month = start_month + i
+            temp_dates.append(str(year) + "/" + str(current_month))
+
+    return temp_dates
+
+
 ##
 # graphs sentiment scores as a scatter plot of cumulative data from each month
 def graph_sentiment_scores_scatter():
@@ -124,28 +179,10 @@ def graph_sentiment_scores_scatter():
                      xytext=(0, 5),
                      ha='center')
 
-    plt.savefig("cumulative_sentiment.png")
+    plt.savefig("cumulative_sentiment_w_irrelevant.png")
     plt.clf()
 
 
-##
-# gets all the dates
-def calculate_dates():
-    temp_dates = []
-
-    for index_year in range(len(time_frames["years"])):
-        month_range = time_frames["month_ranges"][index_year]
-        start_month = month_range[0]
-        end_month = month_range[1]
-        year = time_frames["years"][index_year]
-        for i in range(end_month - start_month + 1):
-            current_month = start_month + i
-            temp_dates.append(str(year) + "/" + str(current_month))
-
-    return temp_dates
-
-
-##
 # graphs sentiment scores as a double line graph with sentiments from each month
 def graph_sentiment_scores_double_line():
     plt.figure(figsize=(12, 6))
@@ -155,11 +192,10 @@ def graph_sentiment_scores_double_line():
     plt.title("Subjectivity Over Time")
     for candidate in candidates:
         subjectivity = candidate_monthly_sentiments[candidate][0]
-
         plt.plot(dates, subjectivity, label=candidate)
 
     plt.legend()
-    plt.savefig("subjectivity_over_time.png")
+    plt.savefig("subjectivity_over_time_w_irrelevant.png")
     plt.clf()
 
     plt.figure(figsize=(12, 6))
@@ -172,9 +208,10 @@ def graph_sentiment_scores_double_line():
         plt.plot(dates, polarity, label=candidate)
 
     plt.legend()
-    plt.savefig("polarity_over_time.png")
+    plt.savefig("polarity_over_time_w_irrelevant.png")
 
 
+# graphs histogram of subjectivity and polarity for each candidate for each month
 def graph_sentiment_scores_monthly_histogram(candidate, current_month, year):
     plt.figure(figsize=(12, 6))
     plt.xlabel('Subjectivity', fontweight='bold')
@@ -182,7 +219,7 @@ def graph_sentiment_scores_monthly_histogram(candidate, current_month, year):
     plt.title(candidate + " Subjectivity Frequency " + str(year) + "/" + str(current_month))
     plt.hist(candidate_sentiments_month[candidate][0], bins=20)
 
-    file_path = candidate + "/sentiment_plots/" + candidate + "_subjectivity_hist_" + str(year) + "_" + str(current_month) + '.png'
+    file_path = candidate + "/sentiment_plots/" + candidate + "_subjectivity_hist_w_irrelevant_" + str(year) + "_" + str(current_month) + '.png'
     plt.savefig(file_path)
     plt.clf()
 
@@ -192,7 +229,7 @@ def graph_sentiment_scores_monthly_histogram(candidate, current_month, year):
     plt.title(candidate + " Polarity Frequency " + str(year) + "/" + str(current_month))
     plt.hist(candidate_sentiments_month[candidate][1], bins=20)
 
-    file_path = candidate + "/sentiment_plots/" + candidate + "_polarity_hist_" + str(year) + "_" + str(current_month) + '.png'
+    file_path = candidate + "/sentiment_plots/" + candidate + "_polarity_hist_w_irrelevant_" + str(year) + "_" + str(current_month) + '.png'
     plt.savefig(file_path)
     plt.clf()
 
@@ -212,5 +249,7 @@ for index_year in range(len(time_frames["years"])):
         for candidate in candidates:
             calculate_sentiment(candidate, year, start_month, end_month)
 
-graph_sentiment_scores_double_line()
+find_num_articles_irrelevant()
 graph_sentiment_scores_scatter()
+graph_sentiment_scores_double_line()
+
