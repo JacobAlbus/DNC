@@ -5,7 +5,9 @@ from GoogleNews import GoogleNews
 from textblob import TextBlob
 
 already_have_data = True
-already_have_sentiments = False
+already_have_sentiments = True
+already_have_histograms = True
+already_have_sentiment_plots = True
 candidates = ['Joe_Biden', 'Bernie_Sanders', 'Elizabeth_Warren', 'Pete_Buttigieg']
 time_frames = {"years": [2019, 2020], "month_ranges": [[4, 12], [1, 3]]}
 dates = []
@@ -79,9 +81,8 @@ def remove_irrelevant_articles(candidate, df):
     return temp
 
 
-##
 # calculates subjectivity and polarity using TextBlob
-def calculate_sentiment(candidate, year, start_month, end_month):
+def calculate_sentiment(candidate, year, start_month, end_month, already_have_histograms):
     index = candidate_monthly_sentiments[candidate][2]
 
     for i in range(end_month - start_month + 1):
@@ -106,37 +107,50 @@ def calculate_sentiment(candidate, year, start_month, end_month):
         candidate_monthly_sentiments[candidate][1][index] /= headlines.shape[0]
 
         index += 1
-        graph_sentiment_scores_monthly_histogram(candidate, current_month, year)
         candidate_sentiments_month[candidate] = [[], []]
+
+        if not already_have_histograms:
+            graph_sentiment_scores_monthly_histogram(candidate, current_month, year)
 
     candidate_monthly_sentiments[candidate][2] = index
 
 
 # finds number of articles for each candidate that don't say them by name in both headline and tagline
 def find_num_articles_irrelevant():
-    num_articles_non_explicit = {"Joe_Biden": 0,
-                                 "Bernie_Sanders": 0,
-                                 "Elizabeth_Warren": 0,
-                                 "Pete_Buttigieg": 0}
+    num_articles_non_explicit = {"Joe_Biden": [[], 0],
+                                 "Bernie_Sanders": [[], 0],
+                                 "Elizabeth_Warren": [[], 0],
+                                 "Pete_Buttigieg": [[], 0]}
+
     for index_year in range(len(time_frames["years"])):
         month_range = time_frames["month_ranges"][index_year]
         start_month = month_range[0]
         end_month = month_range[1]
         year = time_frames["years"][index_year]
+
         for candidate in candidates:
+            total_month_index = num_articles_non_explicit[candidate][1]
+
             for i in range(end_month-start_month + 1):
                 current_month = start_month + i
                 file_path = candidate + "/candidate_headlines/" + candidate + "_" + str(year) + "_" + str(current_month) + ".csv"
                 df = pd.read_csv(file_path)
+                num_articles_non_explicit[candidate][0].append(0)
+
                 for index, row in df.iterrows():
                     first_name = candidate.split("_")[0]
                     last_name = candidate.split("_")[0]
+
                     if(first_name not in row["title"] and last_name not in row["title"]) and (first_name not in row["media"] and last_name not in row["media"]):
-                        num_articles_non_explicit[candidate] += 1
-    print(num_articles_non_explicit)
+                        num_articles_non_explicit[candidate][0][total_month_index] += 1
+
+                total_month_index += 1
+            num_articles_non_explicit[candidate][1] = total_month_index
+
+    for candidate in candidates:
+        graph_num_articles_per_month(num_articles_non_explicit[candidate][0], candidate)
 
 
-##
 # gets all the dates
 def calculate_dates():
     temp_dates = []
@@ -153,7 +167,6 @@ def calculate_dates():
     return temp_dates
 
 
-##
 # graphs sentiment scores as a scatter plot of cumulative data from each month
 def graph_sentiment_scores_scatter():
     cumulative_sentiment = np.zeros((len(candidates), 2))
@@ -234,6 +247,19 @@ def graph_sentiment_scores_monthly_histogram(candidate, current_month, year):
     plt.clf()
 
 
+# graphs histograms of number of articles from each month that don't explicitly name candidate
+def graph_num_articles_per_month(num_articles, candidate):
+    plt.figure(figsize=(12, 6))
+    plt.xlabel('Date', fontweight='bold')
+    plt.ylabel('Frequency', fontweight='bold')
+    plt.title(candidate + " Non-Explicit Articles From Each Month")
+    plt.bar(dates, num_articles)
+
+    file_path = candidate + "/num_articles_non_explicit_each_month.png"
+    plt.savefig(file_path)
+    plt.clf()
+
+
 dates = calculate_dates()
 for index_year in range(len(time_frames["years"])):
     month_range = time_frames["month_ranges"][index_year]
@@ -247,9 +273,12 @@ for index_year in range(len(time_frames["years"])):
 
     if not already_have_sentiments:
         for candidate in candidates:
-            calculate_sentiment(candidate, year, start_month, end_month)
+            calculate_sentiment(candidate, year, start_month, end_month, already_have_histograms)
+
+if not already_have_sentiment_plots:
+    graph_sentiment_scores_double_line()
+    graph_sentiment_scores_scatter()
 
 find_num_articles_irrelevant()
-graph_sentiment_scores_scatter()
-graph_sentiment_scores_double_line()
+
 
