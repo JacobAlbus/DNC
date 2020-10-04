@@ -1,13 +1,16 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import statistics as stat
 from GoogleNews import GoogleNews
 from textblob import TextBlob
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
+analyser = SentimentIntensityAnalyzer()
 already_have_data = True
-already_have_sentiments = True
-already_have_histograms = True
-already_have_sentiment_plots = True
+already_have_sentiments = False
+already_have_histograms = False
+already_have_sentiment_plots = False
 candidates = ['Joe_Biden', 'Bernie_Sanders', 'Elizabeth_Warren', 'Pete_Buttigieg']
 time_frames = {"years": [2019, 2020], "month_ranges": [[4, 12], [1, 3]]}
 dates = []
@@ -21,7 +24,6 @@ candidate_sentiments_month = {"Joe_Biden": [[], []],
                               "Bernie_Sanders": [[], []],
                               "Elizabeth_Warren": [[], []],
                               "Pete_Buttigieg": [[], []]}
-
 
 ##
 # Finds all google news headlines of a given candidate in a certain time frame
@@ -83,36 +85,36 @@ def remove_irrelevant_articles(candidate, df):
 
 # calculates subjectivity and polarity using TextBlob
 def calculate_sentiment(candidate, year, start_month, end_month, already_have_histograms):
-    index = candidate_monthly_sentiments[candidate][2]
+    month_index = candidate_monthly_sentiments[candidate][2]
 
     for i in range(end_month - start_month + 1):
         current_month = start_month + i
         file_path = candidate + "/candidate_headlines/" + candidate + "_" + str(year) + "_" + str(current_month) + '.csv'
         headlines = pd.read_csv(file_path)
+        headlines = remove_irrelevant_articles(candidate, headlines)
         candidate_monthly_sentiments[candidate][0].append(0)
         candidate_monthly_sentiments[candidate][1].append(0)
+        candidate_sentiments_month[candidate][0].append([])
+        candidate_sentiments_month[candidate][1].append([])
 
         for df_index, row in headlines.iterrows():
-            candidate_sentiments_month[candidate][0].append(TextBlob(row["title"]).sentiment[0])
-            candidate_sentiments_month[candidate][0][df_index] += TextBlob(row["media"]).sentiment[0]
+            candidate_sentiments_month[candidate][0][month_index].append(analyser.polarity_scores(row["title"])["compound"])
+            candidate_sentiments_month[candidate][0][month_index][df_index] += analyser.polarity_scores(row["media"])["compound"]
+            candidate_sentiments_month[candidate][0][month_index][df_index] /= 2
 
-            candidate_sentiments_month[candidate][1].append(TextBlob(row["title"]).sentiment[1])
-            candidate_sentiments_month[candidate][1][df_index] += TextBlob(row["media"]).sentiment[1]
+            candidate_sentiments_month[candidate][1][month_index].append(TextBlob(row["title"]).sentiment[1])
+            candidate_sentiments_month[candidate][1][month_index][df_index] += TextBlob(row["media"]).sentiment[1]
+            candidate_sentiments_month[candidate][1][month_index][df_index] /= 2
 
-        for article_index in range(len(candidate_sentiments_month[candidate][0])):
-            candidate_monthly_sentiments[candidate][0][index] += candidate_sentiments_month[candidate][0][article_index]
-            candidate_monthly_sentiments[candidate][1][index] += candidate_sentiments_month[candidate][1][article_index]
-
-        candidate_monthly_sentiments[candidate][0][index] /= headlines.shape[0]
-        candidate_monthly_sentiments[candidate][1][index] /= headlines.shape[0]
-
-        index += 1
-        candidate_sentiments_month[candidate] = [[], []]
+        candidate_monthly_sentiments[candidate][0][month_index] += stat.mean(candidate_sentiments_month[candidate][0][month_index])
+        candidate_monthly_sentiments[candidate][1][month_index] += stat.mean(candidate_sentiments_month[candidate][1][month_index])
 
         if not already_have_histograms:
-            graph_sentiment_scores_monthly_histogram(candidate, current_month, year)
+            graph_sentiment_scores_monthly_histogram(candidate, current_month, year, month_index)
 
-    candidate_monthly_sentiments[candidate][2] = index
+        month_index += 1
+
+    candidate_monthly_sentiments[candidate][2] = month_index
 
 
 # finds number of articles for each candidate that don't say them by name in both headline and tagline
@@ -179,8 +181,8 @@ def graph_sentiment_scores_scatter():
         cumulative_sentiment[candidate_index] /= len(candidate_monthly_sentiments[candidate][0])
 
     plt.figure(figsize=(12, 6))
-    plt.xlabel('Subjectivity', fontweight='bold')
-    plt.ylabel('Polarity', fontweight='bold')
+    plt.xlabel('Polarity', fontweight='bold')
+    plt.ylabel('Subjectivity', fontweight='bold')
     plt.title("Cumulative Sentiment")
     plt.scatter(cumulative_sentiment[:, 0], cumulative_sentiment[:, 1])
 
@@ -192,7 +194,7 @@ def graph_sentiment_scores_scatter():
                      xytext=(0, 5),
                      ha='center')
 
-    plt.savefig("cumulative_sentiment_w_irrelevant.png")
+    plt.savefig("cumulative_sentiment.png")
     plt.clf()
 
 
@@ -204,11 +206,11 @@ def graph_sentiment_scores_double_line():
     plt.ylabel('Score', fontweight='bold')
     plt.title("Subjectivity Over Time")
     for candidate in candidates:
-        subjectivity = candidate_monthly_sentiments[candidate][0]
+        subjectivity = candidate_monthly_sentiments[candidate][1]
         plt.plot(dates, subjectivity, label=candidate)
 
     plt.legend()
-    plt.savefig("subjectivity_over_time_w_irrelevant.png")
+    plt.savefig("subjectivity_over_time.png")
     plt.clf()
 
     plt.figure(figsize=(12, 6))
@@ -217,32 +219,32 @@ def graph_sentiment_scores_double_line():
     plt.ylabel('Score', fontweight='bold')
     plt.title("Polarity Over Time")
     for candidate in candidates:
-        polarity = candidate_monthly_sentiments[candidate][1]
+        polarity = candidate_monthly_sentiments[candidate][0]
         plt.plot(dates, polarity, label=candidate)
 
     plt.legend()
-    plt.savefig("polarity_over_time_w_irrelevant.png")
+    plt.savefig("polarity_over_time.png")
 
 
 # graphs histogram of subjectivity and polarity for each candidate for each month
-def graph_sentiment_scores_monthly_histogram(candidate, current_month, year):
-    plt.figure(figsize=(12, 6))
-    plt.xlabel('Subjectivity', fontweight='bold')
-    plt.ylabel('Frequency', fontweight='bold')
-    plt.title(candidate + " Subjectivity Frequency " + str(year) + "/" + str(current_month))
-    plt.hist(candidate_sentiments_month[candidate][0], bins=20)
-
-    file_path = candidate + "/sentiment_plots/" + candidate + "_subjectivity_hist_w_irrelevant_" + str(year) + "_" + str(current_month) + '.png'
-    plt.savefig(file_path)
-    plt.clf()
-
+def graph_sentiment_scores_monthly_histogram(candidate, current_month, year, month_index):
     plt.figure(figsize=(12, 6))
     plt.xlabel('Polarity', fontweight='bold')
     plt.ylabel('Frequency', fontweight='bold')
     plt.title(candidate + " Polarity Frequency " + str(year) + "/" + str(current_month))
-    plt.hist(candidate_sentiments_month[candidate][1], bins=20)
+    plt.hist(candidate_sentiments_month[candidate][0][month_index], bins=20)
 
-    file_path = candidate + "/sentiment_plots/" + candidate + "_polarity_hist_w_irrelevant_" + str(year) + "_" + str(current_month) + '.png'
+    file_path = candidate + "/sentiment_plots/" + candidate + "_polarity_hist_" + str(year) + "_" + str(current_month) + '.png'
+    plt.savefig(file_path)
+    plt.clf()
+
+    plt.figure(figsize=(12, 6))
+    plt.xlabel('Subjectivity', fontweight='bold')
+    plt.ylabel('Frequency', fontweight='bold')
+    plt.title(candidate + " Subjectivity Frequency " + str(year) + "/" + str(current_month))
+    plt.hist(candidate_sentiments_month[candidate][1][month_index], bins=20)
+
+    file_path = candidate + "/sentiment_plots/" + candidate + "_subjectivity_hist_" + str(year) + "_" + str(current_month) + '.png'
     plt.savefig(file_path)
     plt.clf()
 
@@ -258,6 +260,43 @@ def graph_num_articles_per_month(num_articles, candidate):
     file_path = candidate + "/num_articles_non_explicit_each_month.png"
     plt.savefig(file_path)
     plt.clf()
+
+
+# graphs a histogram of all the the sentiment scores from each month
+def graph_cumulative_sentiments_histogram():
+    for candidate in candidates:
+        total_polarity = []
+        total_subjectivity = []
+
+        for polarity_list in candidate_sentiments_month[candidate][0]:
+            for value in polarity_list:
+                total_polarity.append(value)
+
+        for subjectivity_list in candidate_sentiments_month[candidate][1]:
+            for value in subjectivity_list:
+                total_subjectivity.append(value)
+
+        plt.figure(figsize=(12, 6))
+        plt.xlabel('Polarity', fontweight='bold')
+        plt.ylabel('Frequency', fontweight='bold')
+        plt.title(candidate + " Total Polarity Frequency")
+        plt.hist(total_polarity, bins=20)
+
+        file_path = candidate + "/" + candidate + "_total_polarity_hist.png"
+        print(file_path)
+        plt.savefig(file_path)
+        plt.clf()
+
+        plt.figure(figsize=(12, 6))
+        plt.xlabel('Subjectivity', fontweight='bold')
+        plt.ylabel('Frequency', fontweight='bold')
+        plt.title(candidate + " Total Subjectivity Frequency")
+        plt.hist(total_subjectivity, bins=20)
+
+        file_path = candidate + "/" + candidate + "_total_subjectivity_hist.png"
+        print(file_path)
+        plt.savefig(file_path)
+        plt.clf()
 
 
 dates = calculate_dates()
@@ -278,7 +317,14 @@ for index_year in range(len(time_frames["years"])):
 if not already_have_sentiment_plots:
     graph_sentiment_scores_double_line()
     graph_sentiment_scores_scatter()
+    graph_cumulative_sentiments_histogram()
+    find_num_articles_irrelevant()
 
-find_num_articles_irrelevant()
+for candidate in candidates:
+    sentiments = candidate_monthly_sentiments[candidate]
+    print(candidate + "   polarity_mean   polarity_stdev   subjectivity_mean   subjectivity_stdev")
+    print(str(stat.mean(sentiments[0])) + "  " + str(stat.stdev(sentiments[0])) + "  " +
+          str(stat.mean(sentiments[1])) + "  " + str(stat.stdev(sentiments[1])) + "  ")
+
 
 
