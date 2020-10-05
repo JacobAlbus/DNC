@@ -9,7 +9,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 analyser = SentimentIntensityAnalyzer()
 already_have_data = True
 already_have_sentiments = False
-already_have_histograms = False
+already_have_histograms = True
 already_have_sentiment_plots = False
 candidates = ['Joe_Biden', 'Bernie_Sanders', 'Elizabeth_Warren', 'Pete_Buttigieg']
 time_frames = {"years": [2019, 2020], "month_ranges": [[4, 12], [1, 3]]}
@@ -19,11 +19,11 @@ candidate_monthly_sentiments = {"Joe_Biden": [[], [], 0],
                                 "Bernie_Sanders": [[], [], 0],
                                 "Elizabeth_Warren": [[], [], 0],
                                 "Pete_Buttigieg": [[], [], 0]}
-# stores each sentiment score from month
-candidate_sentiments_month = {"Joe_Biden": [[], []],
-                              "Bernie_Sanders": [[], []],
-                              "Elizabeth_Warren": [[], []],
-                              "Pete_Buttigieg": [[], []]}
+# stores all the individual sentiments scores from each month
+candidate_cumulative_sentiments = {"Joe_Biden": [[], []],
+                                   "Bernie_Sanders": [[], []],
+                                   "Elizabeth_Warren": [[], []],
+                                   "Pete_Buttigieg": [[], []]}
 
 ##
 # Finds all google news headlines of a given candidate in a certain time frame
@@ -75,7 +75,7 @@ def remove_irrelevant_articles(candidate, df):
     temp = df
     for index, row in temp.iterrows():
         first_name = candidate.split("_")[0]
-        last_name = candidate.split("_")[0]
+        last_name = candidate.split("_")[1]
         if (first_name not in row["title"] and last_name not in row["title"]) and (first_name not in row["media"] and last_name not in row["media"]):
             temp = temp.drop(index)
 
@@ -92,22 +92,23 @@ def calculate_sentiment(candidate, year, start_month, end_month, already_have_hi
         file_path = candidate + "/candidate_headlines/" + candidate + "_" + str(year) + "_" + str(current_month) + '.csv'
         headlines = pd.read_csv(file_path)
         headlines = remove_irrelevant_articles(candidate, headlines)
+
         candidate_monthly_sentiments[candidate][0].append(0)
         candidate_monthly_sentiments[candidate][1].append(0)
-        candidate_sentiments_month[candidate][0].append([])
-        candidate_sentiments_month[candidate][1].append([])
+        candidate_cumulative_sentiments[candidate][0].append([])
+        candidate_cumulative_sentiments[candidate][1].append([])
 
         for df_index, row in headlines.iterrows():
-            candidate_sentiments_month[candidate][0][month_index].append(analyser.polarity_scores(row["title"])["compound"])
-            candidate_sentiments_month[candidate][0][month_index][df_index] += analyser.polarity_scores(row["media"])["compound"]
-            candidate_sentiments_month[candidate][0][month_index][df_index] /= 2
+            candidate_cumulative_sentiments[candidate][0][month_index].append(analyser.polarity_scores(row["title"])["compound"])
+            candidate_cumulative_sentiments[candidate][0][month_index][df_index] += analyser.polarity_scores(row["media"])["compound"]
+            candidate_cumulative_sentiments[candidate][0][month_index][df_index] /= 2
 
-            candidate_sentiments_month[candidate][1][month_index].append(TextBlob(row["title"]).sentiment[1])
-            candidate_sentiments_month[candidate][1][month_index][df_index] += TextBlob(row["media"]).sentiment[1]
-            candidate_sentiments_month[candidate][1][month_index][df_index] /= 2
+            candidate_cumulative_sentiments[candidate][1][month_index].append(TextBlob(row["title"]).sentiment[1])
+            candidate_cumulative_sentiments[candidate][1][month_index][df_index] += TextBlob(row["media"]).sentiment[1]
+            candidate_cumulative_sentiments[candidate][1][month_index][df_index] /= 2
 
-        candidate_monthly_sentiments[candidate][0][month_index] += stat.mean(candidate_sentiments_month[candidate][0][month_index])
-        candidate_monthly_sentiments[candidate][1][month_index] += stat.mean(candidate_sentiments_month[candidate][1][month_index])
+        candidate_monthly_sentiments[candidate][0][month_index] += stat.mean(candidate_cumulative_sentiments[candidate][0][month_index])
+        candidate_monthly_sentiments[candidate][1][month_index] += stat.mean(candidate_cumulative_sentiments[candidate][1][month_index])
 
         if not already_have_histograms:
             graph_sentiment_scores_monthly_histogram(candidate, current_month, year, month_index)
@@ -119,10 +120,10 @@ def calculate_sentiment(candidate, year, start_month, end_month, already_have_hi
 
 # finds number of articles for each candidate that don't say them by name in both headline and tagline
 def find_num_articles_irrelevant():
-    num_articles_non_explicit = {"Joe_Biden": [[], 0],
-                                 "Bernie_Sanders": [[], 0],
-                                 "Elizabeth_Warren": [[], 0],
-                                 "Pete_Buttigieg": [[], 0]}
+    num_articles_non_explicit = {"Joe_Biden": [[], [], 0],
+                                 "Bernie_Sanders": [[], [], 0],
+                                 "Elizabeth_Warren": [[], [], 0],
+                                 "Pete_Buttigieg": [[], [], 0]}
 
     for index_year in range(len(time_frames["years"])):
         month_range = time_frames["month_ranges"][index_year]
@@ -131,26 +132,42 @@ def find_num_articles_irrelevant():
         year = time_frames["years"][index_year]
 
         for candidate in candidates:
-            total_month_index = num_articles_non_explicit[candidate][1]
+            total_month_index = num_articles_non_explicit[candidate][2]
+            other_candidates = []
+            for temp in candidates:
+                if temp != candidate:
+                    other_candidates.append(temp)
 
             for i in range(end_month-start_month + 1):
                 current_month = start_month + i
                 file_path = candidate + "/candidate_headlines/" + candidate + "_" + str(year) + "_" + str(current_month) + ".csv"
                 df = pd.read_csv(file_path)
                 num_articles_non_explicit[candidate][0].append(0)
+                num_articles_non_explicit[candidate][1].append(0)
 
                 for index, row in df.iterrows():
                     first_name = candidate.split("_")[0]
-                    last_name = candidate.split("_")[0]
+                    last_name = candidate.split("_")[1]
 
-                    if(first_name not in row["title"] and last_name not in row["title"]) and (first_name not in row["media"] and last_name not in row["media"]):
+                    if(first_name not in row["title"] and last_name not in row["title"]) \
+                            and (first_name not in row["media"] and last_name not in row["media"]):
                         num_articles_non_explicit[candidate][0][total_month_index] += 1
 
+                    for other_candidate in other_candidates:
+                        other_first_name = other_candidate.split("_")[0]
+                        other_last_name = other_candidate.split("_")[1]
+                        if (other_first_name in row["title"] or other_last_name in row["title"]) \
+                                or (other_first_name in row["media"] or other_last_name in row["media"]):
+                            num_articles_non_explicit[candidate][1][total_month_index] += 1
+
                 total_month_index += 1
-            num_articles_non_explicit[candidate][1] = total_month_index
+            num_articles_non_explicit[candidate][2] = total_month_index
 
     for candidate in candidates:
-        graph_num_articles_per_month(num_articles_non_explicit[candidate][0], candidate)
+        graph_num_articles_per_month(num_articles_non_explicit[candidate][0], candidate, "num_articles_non_explicit")
+        print(candidate + "  " + str(sum(num_articles_non_explicit[candidate][1])))
+        graph_num_articles_per_month(num_articles_non_explicit[candidate][1],
+                                     candidate, "num_article_w_other_candidates")
 
 
 # gets all the dates
@@ -232,7 +249,7 @@ def graph_sentiment_scores_monthly_histogram(candidate, current_month, year, mon
     plt.xlabel('Polarity', fontweight='bold')
     plt.ylabel('Frequency', fontweight='bold')
     plt.title(candidate + " Polarity Frequency " + str(year) + "/" + str(current_month))
-    plt.hist(candidate_sentiments_month[candidate][0][month_index], bins=20)
+    plt.hist(candidate_cumulative_sentiments[candidate][0][month_index], bins=20)
 
     file_path = candidate + "/sentiment_plots/" + candidate + "_polarity_hist_" + str(year) + "_" + str(current_month) + '.png'
     plt.savefig(file_path)
@@ -242,7 +259,7 @@ def graph_sentiment_scores_monthly_histogram(candidate, current_month, year, mon
     plt.xlabel('Subjectivity', fontweight='bold')
     plt.ylabel('Frequency', fontweight='bold')
     plt.title(candidate + " Subjectivity Frequency " + str(year) + "/" + str(current_month))
-    plt.hist(candidate_sentiments_month[candidate][1][month_index], bins=20)
+    plt.hist(candidate_cumulative_sentiments[candidate][1][month_index], bins=20)
 
     file_path = candidate + "/sentiment_plots/" + candidate + "_subjectivity_hist_" + str(year) + "_" + str(current_month) + '.png'
     plt.savefig(file_path)
@@ -250,14 +267,14 @@ def graph_sentiment_scores_monthly_histogram(candidate, current_month, year, mon
 
 
 # graphs histograms of number of articles from each month that don't explicitly name candidate
-def graph_num_articles_per_month(num_articles, candidate):
+def graph_num_articles_per_month(num_articles, candidate, file_name):
     plt.figure(figsize=(12, 6))
     plt.xlabel('Date', fontweight='bold')
     plt.ylabel('Frequency', fontweight='bold')
     plt.title(candidate + " Non-Explicit Articles From Each Month")
     plt.bar(dates, num_articles)
 
-    file_path = candidate + "/num_articles_non_explicit_each_month.png"
+    file_path = candidate + "/" + file_name + ".png"
     plt.savefig(file_path)
     plt.clf()
 
@@ -268,11 +285,11 @@ def graph_cumulative_sentiments_histogram():
         total_polarity = []
         total_subjectivity = []
 
-        for polarity_list in candidate_sentiments_month[candidate][0]:
+        for polarity_list in candidate_cumulative_sentiments[candidate][0]:
             for value in polarity_list:
                 total_polarity.append(value)
 
-        for subjectivity_list in candidate_sentiments_month[candidate][1]:
+        for subjectivity_list in candidate_cumulative_sentiments[candidate][1]:
             for value in subjectivity_list:
                 total_subjectivity.append(value)
 
@@ -283,7 +300,6 @@ def graph_cumulative_sentiments_histogram():
         plt.hist(total_polarity, bins=20)
 
         file_path = candidate + "/" + candidate + "_total_polarity_hist.png"
-        print(file_path)
         plt.savefig(file_path)
         plt.clf()
 
@@ -294,7 +310,6 @@ def graph_cumulative_sentiments_histogram():
         plt.hist(total_subjectivity, bins=20)
 
         file_path = candidate + "/" + candidate + "_total_subjectivity_hist.png"
-        print(file_path)
         plt.savefig(file_path)
         plt.clf()
 
